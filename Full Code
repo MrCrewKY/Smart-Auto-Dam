@@ -1,0 +1,195 @@
+#include <LiquidCrystal_I2C.h> //Import libraries
+#include <Keypad.h>
+#include <Servo.h>
+
+//initializing pins
+#define trig 4
+#define echo 3
+#define red A2
+#define yell A1
+#define green A0
+#define buzz 2
+#define servoPin 5
+
+//set password length
+#define Password_Length 8 
+
+//initialise LCD
+LiquidCrystal_I2C lcd(0x27,16,2);
+//Create servo object
+Servo gate; 
+
+//Create operation functions
+//Function to turn on green light 
+void gL(){
+  digitalWrite(red, LOW);
+  digitalWrite(yell, LOW);
+  digitalWrite(green, HIGH);
+}
+
+//Function to turn on yellow light
+void yL(){
+  digitalWrite(red, LOW);
+  digitalWrite(yell, HIGH);
+  digitalWrite(green, LOW);
+}
+
+//Function to turn on red light
+void rL(){
+  digitalWrite(red, HIGH);
+  digitalWrite(yell, LOW);
+  digitalWrite(green, LOW);
+}
+
+//Function to activate buzzer
+void beep(){
+  for(int i = 0; i < 3; i++){ //beep 3 times
+      tone(buzz,440);
+      delay(100);
+      noTone(buzz);
+      delay(100);
+    }
+}
+
+//Returning servo to closed door position
+void noTurn(){
+  gate.write(0);
+}
+
+//Controlling servo to open door 
+void openD(){
+  gate.write(180);
+}
+
+// Creating Keypad
+char Data[Password_Length]; //create array to store password input by user
+char Master[Password_Length] = "0000000"; //Your password
+byte data_count = 0, master_count = 0; 
+bool Pass_is_good;
+char customKey;
+
+const byte ROWS = 4; 
+const byte COLS = 4;
+
+//Creating the keypad matrix
+char hexaKeys[ROWS][COLS] = { 
+  {'1', '2', '3', 'A'},
+  {'4', '5', '6', 'B'},
+  {'7', '8', '9', 'C'},
+  {'*', '0', '#', 'D'}
+};
+
+byte rowPins[ROWS] = {13, 12, 11, 10};
+byte colPins[COLS] = {9, 8, 7, 6};
+
+//Mapping keypad matrix to keypad pins
+Keypad customKeypad = Keypad(makeKeymap(hexaKeys), rowPins, colPins, ROWS, COLS);
+
+void setup(){
+  pinMode(trig, OUTPUT);
+  pinMode(red, OUTPUT);
+  pinMode(yell, OUTPUT);
+  pinMode(green, OUTPUT);
+  pinMode(buzz, OUTPUT);
+  pinMode(echo, INPUT);
+  gate.attach(servoPin);
+  gate.write(0);
+  Serial.begin(9600);
+  lcd.init(); 
+  lcd.backlight();
+}
+
+void loop(){
+
+  lcd.setCursor(0,0);
+  lcd.print("Enter Password:");
+
+  customKey = customKeypad.getKey(); //Get input from user
+
+  //Display each input digit at LCD
+  if (customKey){
+    Data[data_count] = customKey; 
+    lcd.setCursor(data_count,1); 
+    lcd.print(Data[data_count]); 
+    Serial.print(Data[data_count]); 
+    data_count++; 
+    }
+
+  //If user has input 7 numbers
+  if(data_count == Password_Length-1){
+    lcd.clear();
+
+    //If input password matches set password
+    if(!strcmp(Data, Master)){
+      lcd.print("Correct");
+      Serial.println("Correct");
+      delay(1000);
+
+      //Smart dam operation runs while logout key "#" is not pressed
+      while(customKey != '#'){ 
+
+        //Trigger ultrasonic sound wave
+        digitalWrite(trig, HIGH);
+        delay(100); 
+        digitalWrite(trig, LOW);
+    
+        //Receive ultrasonic sound wave
+        int duration = pulseIn(echo,HIGH);
+        
+        //Calculate distance between object and sensor
+        int distance = (duration/2)/29.1;
+        
+        //display on serial monitor
+        Serial.print(distance);
+        Serial.println("cm");
+    
+        //display water level
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Water Level:");
+        Serial.print("Water Level:");
+        lcd.setCursor(0,1);
+        lcd.print((10-distance)*100);
+        Serial.println((10-distance)*100);
+    
+        //Controlling LED
+        if (distance > 4){
+          noTone(7);
+          noTurn();
+          gL();
+        }
+        else if (distance > 3 && distance < 4){
+          noTone(7);
+          noTurn();
+          yL();    
+        }
+        else if(distance < 3){ // danger level
+          beep();
+          rL();
+          openD();  
+        }
+        customKey = customKeypad.getKey(); //get logoutkey input from user
+      }
+      //Turns off LED when logged out
+      digitalWrite(red, LOW); 
+      digitalWrite(yell, LOW);  
+      digitalWrite(green, LOW);
+      }
+    else{ //If wrong password is input
+      lcd.print("Incorrect");
+      Serial.println("Incorrect");
+      delay(1000);
+      }
+    
+    lcd.clear(); //Clears LCD
+    clearData();  
+  }
+}
+
+//Clears all data stored in "Data" array inputted by user
+void clearData(){
+  while(data_count !=0){
+    Data[data_count--] = 0; 
+  }
+  return;
+}
